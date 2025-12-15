@@ -1,0 +1,292 @@
+{
+  "name": "REIntel - URL/Domain Analyzer",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "url-analyzer",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.body.url}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const input = items[0].json.body.url;\nlet domain = input;\n\n// Extract domain from URL\nif (input.includes('://')) {\n  const urlObj = new URL(input);\n  domain = urlObj.hostname;\n} else {\n  domain = input.replace(/^www\\./, '');\n}\n\nreturn {\n  json: {\n    original_input: input,\n    domain: domain,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "function-1",
+      "name": "Extract Domain",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [680, 180]
+    },
+    {
+      "parameters": {
+        "url": "=https://cloudflare-dns.com/dns-query?name={{$json.domain}}&type=A",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/dns-json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-1",
+      "name": "DNS Resolution (Cloudflare)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [900, 180]
+    },
+    {
+      "parameters": {
+        "functionCode": "const dnsData = items[0].json;\nconst domain = items[0].json.domain || $node['Extract Domain'].json.domain;\n\nlet ipAddress = 'N/A';\n\nif (dnsData.Answer && dnsData.Answer.length > 0) {\n  ipAddress = dnsData.Answer[0].data;\n}\n\nreturn {\n  json: {\n    domain: domain,\n    ip_address: ipAddress,\n    dns_resolved: ipAddress !== 'N/A'\n  }\n};"
+      },
+      "id": "function-2",
+      "name": "Parse DNS Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1120, 180]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.virustotal.com/api/v3/domains/{{$json.domain}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-apikey",
+              "value": "YOUR_VIRUSTOTAL_API_KEY"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "http-2",
+      "name": "VirusTotal Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1340, 180]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.abuseipdb.com/api/v2/check?ipAddress={{$node['Parse DNS Response'].json.ip_address}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Key",
+              "value": "YOUR_ABUSEIPDB_API_KEY"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "http-3",
+      "name": "AbuseIPDB Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1340, 380]
+    },
+    {
+      "parameters": {
+        "functionCode": "const domain = $node['Parse DNS Response'].json.domain;\nconst ipAddress = $node['Parse DNS Response'].json.ip_address;\nconst timestamp = $node['Extract Domain'].json.timestamp;\n\n// Parse VirusTotal data\nconst vtResponse = items[0].json;\nlet vtData = {\n  malicious: 0,\n  suspicious: 0,\n  harmless: 0,\n  undetected: 0,\n  total_votes: 0\n};\n\nif (vtResponse.statusCode === 200 && vtResponse.body && vtResponse.body.data) {\n  const stats = vtResponse.body.data.attributes.last_analysis_stats;\n  vtData = {\n    malicious: stats.malicious || 0,\n    suspicious: stats.suspicious || 0,\n    harmless: stats.harmless || 0,\n    undetected: stats.undetected || 0,\n    total_votes: (stats.malicious || 0) + (stats.suspicious || 0) + (stats.harmless || 0) + (stats.undetected || 0)\n  };\n}\n\n// Parse AbuseIPDB data\nconst abuseResponse = items[1].json;\nlet abuseData = {\n  abuse_confidence_score: 0,\n  total_reports: 0,\n  is_whitelisted: false,\n  last_reported: null\n};\n\nif (abuseResponse.statusCode === 200 && abuseResponse.body && abuseResponse.body.data) {\n  const data = abuseResponse.body.data;\n  abuseData = {\n    abuse_confidence_score: data.abuseConfidenceScore || 0,\n    total_reports: data.totalReports || 0,\n    is_whitelisted: data.isWhitelisted || false,\n    last_reported: data.lastReportedAt || null\n  };\n}\n\n// Calculate threat score (0-100)\nconst vtScore = vtData.total_votes > 0 ? ((vtData.malicious + vtData.suspicious) / vtData.total_votes) * 50 : 0;\nconst abuseScore = abuseData.abuse_confidence_score * 0.5;\nconst threatScore = Math.round(vtScore + abuseScore);\n\n// Determine threat level\nlet threatLevel = 'LOW';\nlet recommendation = 'ALLOW';\n\nif (threatScore >= 70) {\n  threatLevel = 'CRITICAL';\n  recommendation = 'BLOCK';\n} else if (threatScore >= 50) {\n  threatLevel = 'HIGH';\n  recommendation = 'BLOCK';\n} else if (threatScore >= 30) {\n  threatLevel = 'MEDIUM';\n  recommendation = 'INVESTIGATE';\n} else if (threatScore >= 10) {\n  threatLevel = 'LOW';\n  recommendation = 'MONITOR';\n}\n\nreturn {\n  json: {\n    analyzed_url: $node['Extract Domain'].json.original_input,\n    domain: domain,\n    ip_address: ipAddress,\n    threat_score: threatScore,\n    threat_level: threatLevel,\n    recommendation: recommendation,\n    virustotal: {\n      malicious: vtData.malicious,\n      suspicious: vtData.suspicious,\n      harmless: vtData.harmless,\n      undetected: vtData.undetected,\n      total_scanners: vtData.total_votes\n    },\n    abuseipdb: {\n      abuse_confidence_score: abuseData.abuse_confidence_score,\n      total_reports: abuseData.total_reports,\n      is_whitelisted: abuseData.is_whitelisted,\n      last_reported: abuseData.last_reported\n    },\n    analysis_timestamp: timestamp,\n    analyzed_by: 'REIntel - Remote Execution Community'\n  }\n};"
+      },
+      "id": "function-3",
+      "name": "Generate Report",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 280]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}"
+      },
+      "id": "response-1",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1780, 280]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"error\": \"Invalid request. Please provide a URL in the body as: {\\\"url\\\": \\\"https://example.com\\\"}\", \"status\": \"error\"}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "response-2",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 420]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Extract Domain",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Domain": {
+      "main": [
+        [
+          {
+            "node": "DNS Resolution (Cloudflare)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DNS Resolution (Cloudflare)": {
+      "main": [
+        [
+          {
+            "node": "Parse DNS Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse DNS Response": {
+      "main": [
+        [
+          {
+            "node": "VirusTotal Check",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AbuseIPDB Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VirusTotal Check": {
+      "main": [
+        [
+          {
+            "node": "Generate Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AbuseIPDB Check": {
+      "main": [
+        [
+          {
+            "node": "Generate Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Report": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1",
+  "id": "REIntel-URL-Analyzer",
+  "meta": {
+    "instanceId": "REIntel-Community"
+  },
+  "tags": [
+    {
+      "name": "security"
+    },
+    {
+      "name": "threat-intelligence"
+    },
+    {
+      "name": "REIntel"
+    }
+  ]
+}

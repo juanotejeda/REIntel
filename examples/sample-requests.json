@@ -1,0 +1,45 @@
+{
+  "description": "Sample requests for testing REIntel workflows",
+  "workflows": {
+    "url-domain-analyzer": {
+      "endpoint": "POST /webhook/url-analyzer",
+      "examples": [
+        {
+          "name": "Analyze a domain",
+          "request": {
+            "url": "google.com"
+          },
+          "curl": "curl -X POST https://your-n8n-instance.com/webhook/url-analyzer -H 'Content-Type: application/json' -d '{\"url\": \"google.com\"}'"
+        },
+        {
+          "name": "Analyze a full URL",
+          "request": {
+            "url": "https://www.github.com"
+          },
+          "curl": "curl -X POST https://your-n8n-instance.com/webhook/url-analyzer -H 'Content-Type: application/json' -d '{\"url\": \"https://www.github.com\"}'"
+        },
+        {
+          "name": "Analyze potentially malicious domain (test)",
+          "request": {
+            "url": "malware-test-domain.com"
+          },
+          "note": "Replace with actual suspicious domain for testing",
+          "curl": "curl -X POST https://your-n8n-instance.com/webhook/url-analyzer -H 'Content-Type: application/json' -d '{\"url\": \"malware-test-domain.com\"}'"
+        }
+      ]
+    }
+  },
+  "test_domains": {
+    "safe": [
+      "google.com",
+      "github.com",
+      "wikipedia.org",
+      "cloudflare.com"
+    ],
+    "testing": [
+      "eicar.org",
+      "testphp.vulnweb.com"
+    ],
+    "note": "Never test with actual malicious domains in production. Use designated testing domains only."
+  }
+}
