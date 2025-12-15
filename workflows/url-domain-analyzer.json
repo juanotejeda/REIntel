@@ -8,11 +8,15 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "webhook-1",
+      "id": "2daa596d-0535-4a26-92ff-683e93743f2f",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [240, 300]
+      "position": [
+        -160,
+        48
+      ],
+      "webhookId": "37e4baf4-5f44-41e8-b845-0c593849f6b2"
     },
     {
       "parameters": {
@@ -25,27 +29,31 @@
           ]
         }
       },
-      "id": "if-1",
+      "id": "aa2aa7fa-a253-41f7-98c9-bf8f59c7a667",
       "name": "Validate Input",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [460, 300]
+      "position": [
+        64,
+        48
+      ]
     },
     {
       "parameters": {
         "functionCode": "const input = items[0].json.body.url;\nlet domain = input;\n\n// Extract domain from URL\nif (input.includes('://')) {\n  const urlObj = new URL(input);\n  domain = urlObj.hostname;\n} else {\n  domain = input.replace(/^www\\./, '');\n}\n\nreturn {\n  json: {\n    original_input: input,\n    domain: domain,\n    timestamp: new Date().toISOString()\n  }\n};"
       },
-      "id": "function-1",
+      "id": "50c7e857-ded3-45e3-bd88-02686e24dbeb",
       "name": "Extract Domain",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [680, 180]
+      "position": [
+        288,
+        -48
+      ]
     },
     {
       "parameters": {
         "url": "=https://cloudflare-dns.com/dns-query?name={{$json.domain}}&type=A",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -57,33 +65,37 @@
         },
         "options": {}
       },
-      "id": "http-1",
+      "id": "34ebd1ed-1eb0-4a5f-a9f8-9e4c222fba2f",
       "name": "DNS Resolution (Cloudflare)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [900, 180]
+      "position": [
+        512,
+        -48
+      ]
     },
     {
       "parameters": {
-        "functionCode": "const dnsData = items[0].json;\nconst domain = items[0].json.domain || $node['Extract Domain'].json.domain;\n\nlet ipAddress = 'N/A';\n\nif (dnsData.Answer && dnsData.Answer.length > 0) {\n  ipAddress = dnsData.Answer[0].data;\n}\n\nreturn {\n  json: {\n    domain: domain,\n    ip_address: ipAddress,\n    dns_resolved: ipAddress !== 'N/A'\n  }\n};"
+        "functionCode": "const dnsData = items[0].json;\n\n// La respuesta viene como string JSON, hay que parsearlo\nlet dnsResponse;\nif (typeof dnsData.data === 'string') {\n  dnsResponse = JSON.parse(dnsData.data);\n} else {\n  dnsResponse = dnsData;\n}\n\nconst domain = $node['Extract Domain'].json.domain;\n\nlet ipAddress = 'N/A';\n\nif (dnsResponse.Answer && dnsResponse.Answer.length > 0) {\n  ipAddress = dnsResponse.Answer[0].data;\n}\n\nreturn {\n  json: {\n    domain: domain,\n    ip_address: ipAddress,\n    dns_resolved: ipAddress !== 'N/A'\n  }\n};"
       },
-      "id": "function-2",
+      "id": "c7ce88fe-531b-4aa1-b0bc-0e257aae6057",
       "name": "Parse DNS Response",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1120, 180]
+      "position": [
+        736,
+        -48
+      ]
     },
     {
       "parameters": {
         "url": "=https://www.virustotal.com/api/v3/domains/{{$json.domain}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-apikey",
-              "value": "YOUR_VIRUSTOTAL_API_KEY"
+              "value": "PON_TU_APIKEY_AQUI"
             }
           ]
         },
@@ -95,23 +107,24 @@
           }
         }
       },
-      "id": "http-2",
+      "id": "c13ef16f-d528-4d25-9693-f9489a3543ef",
       "name": "VirusTotal Check",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1340, 180]
+      "position": [
+        960,
+        -144
+      ]
     },
     {
       "parameters": {
         "url": "=https://api.abuseipdb.com/api/v2/check?ipAddress={{$node['Parse DNS Response'].json.ip_address}}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "Key",
-              "value": "YOUR_ABUSEIPDB_API_KEY"
+              "value": "PON_TU_APIKEY_AQUIQ"
             },
             {
               "name": "Accept",
@@ -127,32 +140,42 @@
           }
         }
       },
-      "id": "http-3",
+      "id": "9d8afef2-2ad2-4b9e-90a7-3125228eca86",
       "name": "AbuseIPDB Check",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1340, 380]
+      "position": [
+        960,
+        48
+      ]
     },
     {
       "parameters": {
-        "functionCode": "const domain = $node['Parse DNS Response'].json.domain;\nconst ipAddress = $node['Parse DNS Response'].json.ip_address;\nconst timestamp = $node['Extract Domain'].json.timestamp;\n\n// Parse VirusTotal data\nconst vtResponse = items[0].json;\nlet vtData = {\n  malicious: 0,\n  suspicious: 0,\n  harmless: 0,\n  undetected: 0,\n  total_votes: 0\n};\n\nif (vtResponse.statusCode === 200 && vtResponse.body && vtResponse.body.data) {\n  const stats = vtResponse.body.data.attributes.last_analysis_stats;\n  vtData = {\n    malicious: stats.malicious || 0,\n    suspicious: stats.suspicious || 0,\n    harmless: stats.harmless || 0,\n    undetected: stats.undetected || 0,\n    total_votes: (stats.malicious || 0) + (stats.suspicious || 0) + (stats.harmless || 0) + (stats.undetected || 0)\n  };\n}\n\n// Parse AbuseIPDB data\nconst abuseResponse = items[1].json;\nlet abuseData = {\n  abuse_confidence_score: 0,\n  total_reports: 0,\n  is_whitelisted: false,\n  last_reported: null\n};\n\nif (abuseResponse.statusCode === 200 && abuseResponse.body && abuseResponse.body.data) {\n  const data = abuseResponse.body.data;\n  abuseData = {\n    abuse_confidence_score: data.abuseConfidenceScore || 0,\n    total_reports: data.totalReports || 0,\n    is_whitelisted: data.isWhitelisted || false,\n    last_reported: data.lastReportedAt || null\n  };\n}\n\n// Calculate threat score (0-100)\nconst vtScore = vtData.total_votes > 0 ? ((vtData.malicious + vtData.suspicious) / vtData.total_votes) * 50 : 0;\nconst abuseScore = abuseData.abuse_confidence_score * 0.5;\nconst threatScore = Math.round(vtScore + abuseScore);\n\n// Determine threat level\nlet threatLevel = 'LOW';\nlet recommendation = 'ALLOW';\n\nif (threatScore >= 70) {\n  threatLevel = 'CRITICAL';\n  recommendation = 'BLOCK';\n} else if (threatScore >= 50) {\n  threatLevel = 'HIGH';\n  recommendation = 'BLOCK';\n} else if (threatScore >= 30) {\n  threatLevel = 'MEDIUM';\n  recommendation = 'INVESTIGATE';\n} else if (threatScore >= 10) {\n  threatLevel = 'LOW';\n  recommendation = 'MONITOR';\n}\n\nreturn {\n  json: {\n    analyzed_url: $node['Extract Domain'].json.original_input,\n    domain: domain,\n    ip_address: ipAddress,\n    threat_score: threatScore,\n    threat_level: threatLevel,\n    recommendation: recommendation,\n    virustotal: {\n      malicious: vtData.malicious,\n      suspicious: vtData.suspicious,\n      harmless: vtData.harmless,\n      undetected: vtData.undetected,\n      total_scanners: vtData.total_votes\n    },\n    abuseipdb: {\n      abuse_confidence_score: abuseData.abuse_confidence_score,\n      total_reports: abuseData.total_reports,\n      is_whitelisted: abuseData.is_whitelisted,\n      last_reported: abuseData.last_reported\n    },\n    analysis_timestamp: timestamp,\n    analyzed_by: 'REIntel - Remote Execution Community'\n  }\n};"
+        "functionCode": "// Get data from previous nodes\nconst domain = $node['Parse DNS Response'].json.domain;\nconst ipAddress = $node['Parse DNS Response'].json.ip_address;\nconst timestamp = $node['Extract Domain'].json.timestamp;\n\n// Parse VirusTotal data (primer input)\nconst vtResponse = $input.first().json;\nlet vtData = {\n  malicious: 0,\n  suspicious: 0,\n  harmless: 0,\n  undetected: 0,\n  total_votes: 0\n};\n\nif (vtResponse.statusCode === 200 && vtResponse.body) {\n  // VirusTotal puede devolver string JSON\n  let vtBody = vtResponse.body;\n  if (typeof vtBody === 'string') {\n    vtBody = JSON.parse(vtBody);\n  }\n  \n  if (vtBody.data && vtBody.data.attributes && vtBody.data.attributes.last_analysis_stats) {\n    const stats = vtBody.data.attributes.last_analysis_stats;\n    vtData = {\n      malicious: stats.malicious || 0,\n      suspicious: stats.suspicious || 0,\n      harmless: stats.harmless || 0,\n      undetected: stats.undetected || 0,\n      total_votes: (stats.malicious || 0) + (stats.suspicious || 0) + (stats.harmless || 0) + (stats.undetected || 0)\n    };\n  }\n}\n\n// Parse AbuseIPDB data (segundo input)\nconst abuseResponse = $input.last().json;\nlet abuseData = {\n  abuse_confidence_score: 0,\n  total_reports: 0,\n  is_whitelisted: false,\n  last_reported: null\n};\n\nif (abuseResponse.statusCode === 200 && abuseResponse.body) {\n  // AbuseIPDB puede devolver string JSON\n  let abuseBody = abuseResponse.body;\n  if (typeof abuseBody === 'string') {\n    abuseBody = JSON.parse(abuseBody);\n  }\n  \n  if (abuseBody.data) {\n    const data = abuseBody.data;\n    abuseData = {\n      abuse_confidence_score: data.abuseConfidenceScore || 0,\n      total_reports: data.totalReports || 0,\n      is_whitelisted: data.isWhitelisted || false,\n      last_reported: data.lastReportedAt || null\n    };\n  }\n}\n\n// Calculate threat score (0-100)\nconst vtScore = vtData.total_votes > 0 ? ((vtData.malicious + vtData.suspicious) / vtData.total_votes) * 50 : 0;\nconst abuseScore = abuseData.abuse_confidence_score * 0.5;\nconst threatScore = Math.round(vtScore + abuseScore);\n\n// Determine threat level\nlet threatLevel = 'LOW';\nlet recommendation = 'ALLOW';\n\nif (threatScore >= 70) {\n  threatLevel = 'CRITICAL';\n  recommendation = 'BLOCK';\n} else if (threatScore >= 50) {\n  threatLevel = 'HIGH';\n  recommendation = 'BLOCK';\n} else if (threatScore >= 30) {\n  threatLevel = 'MEDIUM';\n  recommendation = 'INVESTIGATE';\n} else if (threatScore >= 10) {\n  threatLevel = 'LOW';\n  recommendation = 'MONITOR';\n}\n\nreturn {\n  json: {\n    analyzed_url: $node['Extract Domain'].json.original_input,\n    domain: domain,\n    ip_address: ipAddress,\n    threat_score: threatScore,\n    threat_level: threatLevel,\n    recommendation: recommendation,\n    virustotal: {\n      malicious: vtData.malicious,\n      suspicious: vtData.suspicious,\n      harmless: vtData.harmless,\n      undetected: vtData.undetected,\n      total_scanners: vtData.total_votes\n    },\n    abuseipdb: {\n      abuse_confidence_score: abuseData.abuse_confidence_score,\n      total_reports: abuseData.total_reports,\n      is_whitelisted: abuseData.is_whitelisted,\n      last_reported: abuseData.last_reported\n    },\n    analysis_timestamp: timestamp,\n    analyzed_by: 'REIntel - Remote Execution Community'\n  }\n};"
       },
-      "id": "function-3",
+      "id": "b9d18036-5ce2-48c3-83dc-7e6b91cd5ee8",
       "name": "Generate Report",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1560, 280]
+      "position": [
+        1184,
+        -48
+      ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{$json}}"
+        "responseBody": "={{$json}}",
+        "options": {}
       },
-      "id": "response-1",
+      "id": "0a0fad19-98bf-45af-b956-d82387ce71e6",
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [1780, 280]
+      "position": [
+        1632,
+        -48
+      ]
     },
     {
       "parameters": {
@@ -162,13 +185,30 @@
           "responseCode": 400
         }
       },
-      "id": "response-2",
+      "id": "dc0d253a-2b5e-41a8-9811-672e5de2309d",
       "name": "Error Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [680, 420]
+      "position": [
+        288,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $json;\n\nreturn {\n  json: {\n    meta: {\n      analyzed_by: r.analyzed_by,\n      analysis_timestamp: r.analysis_timestamp\n    },\n    input: {\n      original: r.analyzed_url,\n      domain: r.domain,\n      ip_address: r.ip_address\n    },\n    verdict: {\n      threat_score: r.threat_score,\n      threat_level: r.threat_level,\n      recommendation: r.recommendation\n    },\n    sources: {\n      virustotal: {\n        malicious: r.virustotal.malicious,\n        suspicious: r.virustotal.suspicious,\n        harmless: r.virustotal.harmless,\n        undetected: r.virustotal.undetected,\n        total_scanners: r.virustotal.total_scanners\n      },\n      abuseipdb: {\n        abuse_confidence_score: r.abuseipdb.abuse_confidence_score,\n        total_reports: r.abuseipdb.total_reports,\n        is_whitelisted: r.abuseipdb.is_whitelisted,\n        last_reported: r.abuseipdb.last_reported\n      }\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        -48
+      ],
+      "id": "d7b99c80-0a5f-4b38-ab44-1d2b15877887",
+      "name": "Code in JavaScript"
     }
   ],
+  "pinData": {},
   "connections": {
     "Webhook": {
       "main": [
@@ -263,6 +303,17 @@
       "main": [
         [
           {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
             "node": "Respond to Webhook",
             "type": "main",
             "index": 0
@@ -271,21 +322,32 @@
       ]
     }
   },
-  "active": false,
-  "settings": {},
-  "versionId": "1",
-  "id": "REIntel-URL-Analyzer",
-  "meta": {
-    "instanceId": "REIntel-Community"
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
   },
+  "versionId": "ce754515-6954-4f3a-affb-8a629214ffbe",
+  "meta": {
+    "instanceId": "3856b333739616138613e7ce22e5695374cebe7446d0f08ebce7fdd98d7bcffe"
+  },
+  "id": "mnpe9xaegqJ3fdlR",
   "tags": [
     {
-      "name": "security"
-    },
-    {
+      "updatedAt": "2025-12-15T17:09:29.099Z",
+      "createdAt": "2025-12-15T17:09:29.099Z",
+      "id": "0HocCYA5ccsLEu9l",
       "name": "threat-intelligence"
     },
     {
+      "updatedAt": "2025-12-15T17:09:29.060Z",
+      "createdAt": "2025-12-15T17:09:29.060Z",
+      "id": "TH9PGl8EnLGp1F9S",
+      "name": "security"
+    },
+    {
+      "updatedAt": "2025-12-15T17:09:29.096Z",
+      "createdAt": "2025-12-15T17:09:29.096Z",
+      "id": "qp0WYg7XYNQ8X31U",
       "name": "REIntel"
     }
   ]
