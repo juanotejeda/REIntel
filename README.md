@@ -5,62 +5,72 @@
 ![Platform](https://img.shields.io/badge/platform-n8n-FF6D5A)
 ![Security](https://img.shields.io/badge/security-threat%20intel-red)
 
-Colección de workflows de automatización para inteligencia de amenazas y operaciones de seguridad usando n8n. Análisis automatizado de URLs, dominios, IPs y más.
+Colección de workflows de automatización para inteligencia de amenazas y operaciones de seguridad usando n8n. Análisis automatizado de URLs, dominios, IPs y, próximamente, hashes y otros IOCs. 
 
 **Proyecto Open Source de la comunidad Remote Execution (#RE)**
 
 ---
 
-## ✨ Características Principales
+## ✨ Características principales
 
-- 🔍 **Análisis Automatizado**: Verificación de URLs, dominios e IPs sospechosas
-- 🌐 **Múltiples Fuentes**: Integración con VirusTotal, AbuseIPDB y más
-- 📊 **Reportes Consolidados**: Genera informes con score de amenaza
-- 🚀 **Fácil Implementación**: Workflows listos para importar en n8n
-- 🔄 **Escalable**: Añade nuevas fuentes de threat intel fácilmente
-- 🎓 **Educativo**: Ideal para aprender automatización en ciberseguridad
-- 💾 **Gratuito**: Usa APIs gratuitas sin costos ocultos
+- 🔍 **Análisis automatizado**: Verificación de URLs, dominios e IPs sospechosas.
+- 🌐 **Múltiples fuentes**: Integración con VirusTotal y AbuseIPDB para enriquecer IOCs.
+- 📊 **Respuesta estructurada**: JSON pensado para SOC / SIEM, con score y veredicto claros.
+- 🚀 **Fácil implementación**: Workflows listos para importar en n8n (self-hosted o cloud).
+- 🔄 **Escalable**: Diseño preparado para agregar nuevos workflows (hashes, phishing, etc.).
+- 🎓 **Educativo**: Ideal para aprender automatización en ciberseguridad y conceptos de SOAR.
 
 ---
 
-## 📦 Workflows Disponibles
+## 📦 Workflows disponibles
 
 ### 1. URL/Domain Analyzer (v0.1)
+
 **Archivo:** `workflows/url-domain-analyzer.json`
 
-**Descripción:** Analiza URLs y dominios sospechosos consultando múltiples fuentes de threat intelligence.
+**Descripción:** Analiza URLs y dominios sospechosos consultando múltiples fuentes de threat intelligence y devolviendo un JSON estructurado listo para automatización.
 
 **Componentes:**
-- Webhook de entrada para recibir URLs/dominios
-- Resolución DNS usando Cloudflare DNS-over-HTTPS
-- Consulta a VirusTotal API (análisis de reputación)
-- Consulta a AbuseIPDB (verificación de IP maliciosa)
-- Generación de reporte consolidado con score de amenaza
 
-**APIs Necesarias:**
+- Webhook de entrada para recibir URLs/dominios.
+- Resolución DNS usando Cloudflare DNS-over-HTTPS.
+- Consulta a VirusTotal API para reputación de dominio. 
+- Consulta a AbuseIPDB para verificar si la IP está reportada como maliciosa. 
+- Cálculo de `threat_score`, nivel de amenaza y recomendación.
+- Respuesta JSON con secciones: `meta`, `input`, `verdict`, `sources`.
+
+**Estructura de la respuesta:**
+
+- `meta`: información del análisis (quién, cuándo).
+- `input`: datos de entrada normalizados (URL original, dominio, IP).
+- `verdict`: score, nivel de riesgo y acción recomendada.
+- `sources`: detalle por fuente (VirusTotal, AbuseIPDB).
+
+**APIs necesarias:**
+
 - VirusTotal API (gratuita): https://www.virustotal.com/gui/join-us
-- AbuseIPDB API (gratuita): https://www.abuseipdb.com/register
-
+- AbuseIPDB API (gratuita): https://www.abuseipdb.com/register 
 ---
 
-## 🚀 Instalación Rápida
+## 🚀 Instalación rápida
 
-### Requisitos Previos
+### Requisitos previos
 
-- n8n instalado (Docker, npm o cloud)
-- Cuentas gratuitas en VirusTotal y AbuseIPDB
-- API keys de los servicios mencionados
+- n8n instalado (Docker, npm o n8n Cloud).
+- Cuenta gratuita en VirusTotal.
+- Cuenta gratuita en AbuseIPDB.
+- API keys de ambos servicios.
 
-### Instalación con Docker (Recomendado)
-
+### Instalación con Docker (recomendado)
 ```bash
 # Crear directorio para n8n
 mkdir -p ~/.n8n
 
 # Ejecutar n8n con Docker
-docker run -it --rm \
+docker run -d \
   --name n8n \
   -p 5678:5678 \
+  -e N8N_SECURE_COOKIE=false \
   -v ~/.n8n:/home/node/.n8n \
   n8nio/n8n
 ```
@@ -110,6 +120,28 @@ curl -X POST https://tu-instancia-n8n.com/webhook/url-analyzer \
   -d '{"url": "https://ejemplo-sospechoso.com"}'
 ```
 
+---
+
+## 🧪 Uso desde terminal con jq
+
+Para ver la respuesta de forma legible en consola:
+
+```bash
+curl -s http://localhost:5678/webhook/url-analyzer \
+  -H "Content-Type: application/json" \
+  -d '{"url": "google.com"}' | jq .
+```
+
+
+Instalación de `jq` (Debian/Ubuntu/MX Linux):
+
+```bash
+sudo apt install -y jq
+```
+
+jq permite pretty-print y filtrado de JSON desde línea de comandos.
+
+
 4. Revisa el reporte generado
 
 ---
@@ -132,32 +164,48 @@ Consulta AbuseIPDB → Verificación de IP
 Agregación de Datos → Calcula score de amenaza
     ↓
 Generación de Reporte (JSON)
+	↓
+Code → reestructura JSON (meta / input / verdict / sources)
+	↓
+Respond to Webhook → devuelve respuesta JSON	
 ```
 
 **Ejemplo de Reporte:**
 
 ```json
 {
-  "analyzed_url": "https://malicious-site.com",
-  "domain": "malicious-site.com",
-  "ip_address": "192.0.2.1",
-  "threat_score": 85,
-  "threat_level": "HIGH",
-  "virustotal": {
-    "detections": 45,
-    "total_scanners": 70,
-    "malicious_votes": 12
-  },
-  "abuseipdb": {
-    "abuse_confidence": 98,
-    "reports": 234,
-    "last_reported": "2025-12-14"
-  },
-  "recommendation": "BLOCK",
-  "timestamp": "2025-12-15T13:29:00Z"
+"meta": {
+"analyzed_by": "REIntel - Remote Execution Community",
+"analysis_timestamp": "2025-12-15T18:21:10.266Z"
+},
+"input": {
+"original": "google.com",
+"domain": "google.com",
+"ip_address": "142.251.134.78"
+},
+"verdict": {
+"threat_score": 1,
+"threat_level": "LOW",
+"recommendation": "ALLOW"
+},
+"sources": {
+"virustotal": {
+"malicious": 1,
+"suspicious": 0,
+"harmless": 66,
+"undetected": 28,
+"total_scanners": 95
+},
+"abuseipdb": {
+"abuse_confidence_score": 0,
+"total_reports": 0,
+"is_whitelisted": false,
+"last_reported": null
+}
+}
 }
 ```
-
+Workflow probado en n8n 2.0.2 (self-hosted con Docker) usando las APIs públicas de VirusTotal y AbuseIPDB.
 ---
 
 ## 🗺️ Roadmap
